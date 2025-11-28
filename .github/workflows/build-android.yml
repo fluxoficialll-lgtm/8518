@@ -1,0 +1,78 @@
+name: Build Android APK (From ZIP)
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+      - master
+
+jobs:
+  build:
+    name: Build APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v3
+
+      - name: Unzip Project (Magic Step)
+        run: |
+          # Verifica se o arquivo project.zip existe
+          if [ -f "project.zip" ]; then
+            echo "📦 Encontrei project.zip! Descompactando..."
+            unzip -o project.zip -d extracted_temp
+            
+            # Move os arquivos para a raiz
+            if [ -f "extracted_temp/package.json" ]; then
+              cp -r extracted_temp/* .
+            else
+              # Se estiver dentro de uma subpasta
+              SUBFOLDER=$(ls extracted_temp | head -n 1)
+              if [ -d "extracted_temp/$SUBFOLDER" ]; then
+                 echo "📂 Movendo arquivos da subpasta: $SUBFOLDER"
+                 cp -r extracted_temp/$SUBFOLDER/* .
+                 cp -r extracted_temp/$SUBFOLDER/.* . 2>/dev/null || true
+              fi
+            fi
+            
+            rm -rf extracted_temp
+            echo "✅ Descompactação concluída!"
+            ls -la
+          else
+            echo "⚠️ Nenhum arquivo project.zip encontrado. Assumindo arquivos no repo."
+          fi
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '20'
+
+      - name: Setup Java
+        uses: actions/setup-java@v3
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+
+      - name: Install Dependencies
+        run: npm install
+
+      - name: Build React App
+        run: npm run build
+
+      - name: Add Android Platform
+        run: |
+          npx cap add android
+          npx cap sync android
+
+      - name: Build APK with Gradle
+        run: |
+          cd android
+          chmod +x gradlew
+          ./gradlew assembleDebug
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: flux-app-debug
+          path: android/app/build/outputs/apk/debug/app-debug.apk
